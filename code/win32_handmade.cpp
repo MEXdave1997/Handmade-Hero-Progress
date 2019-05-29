@@ -1,6 +1,7 @@
 //NOTE(David): Continue from here - https://youtu.be/w7ay7QXmo_o?t=4008
 #include <Windows.h>
 #include <stdint.h>
+#include <Xinput.h>
 
 #define internal static
 #define local_persist static
@@ -27,7 +28,7 @@ struct Win32_OffScreen_Buffer
 };
 
 // TODO(David): This is a global for now.
-global_variable bool Running;
+global_variable bool GlobalRunning;
 global_variable Win32_OffScreen_Buffer GlobalBackuffer;
 
 struct Win32_Window_Dimension
@@ -36,7 +37,38 @@ struct Win32_Window_Dimension
 	int Height;
 };
 
-Win32_Window_Dimension
+// NOTE(David) XInputgetState
+#define X_INPUT_GET_STATE(name) DWORD WINAPI name(DWORD dwUserIndex, XINPUT_STATE *pState)
+typedef X_INPUT_GET_STATE(x_input_get_state);
+X_INPUT_GET_STATE(XInputGetStateStub)
+{
+	return 0;
+}
+global_variable x_input_get_state *XInputGetState_ = XInputGetStateStub;
+#define  XInputGetState XInputGetState_;
+
+// NOTE(David): XInputSetState
+#define X_INPUT_SET_STATE(name) DWORD WINAPI name(DWORD dwUserIndex, XINPUT_VIBRATION *pVibration)
+typedef X_INPUT_SET_STATE(x_input_set_state);
+X_INPUT_SET_STATE(XInputSetStateStub)
+{
+	return 0;
+}
+global_variable x_input_set_state *XInputSetState_ = XInputSetStateStub;
+#define  XInputSetState XInputSetState_;
+
+internal void
+Win32LoadXInput(void)
+{
+	HMODULE XInputLibrary = LoadLibraryA("xinput1_3.dll");
+	if (XInputLibrary)
+	{
+		XInputGetState = (x_input_get_state *)GetProcAddress(XInputLibrary, "XInputGetState");
+		XInputSetState = (x_input_set_state *)GetProcAddress(XInputLibrary, "XInputSetState");
+	}
+}
+
+internal Win32_Window_Dimension
 GetWindowDimension(HWND Window)
 {
 	Win32_Window_Dimension Result;
@@ -154,7 +186,7 @@ Win32MainWindowCallback(HWND Window,
 		case WM_CLOSE:
 		{
 			// TODO(David): Handle this with a message to the User?
-			Running = false;
+			GlobalRunning = false;
 		} break;
 
 		case WM_ACTIVATEAPP:
@@ -165,7 +197,7 @@ Win32MainWindowCallback(HWND Window,
 		case WM_DESTROY:
 		{
 			// TODO(David): Handle this as an error - recreate window?
-			Running = false;
+			GlobalRunning = false;
 		} break;
 
 		case WM_PAINT:
@@ -200,11 +232,12 @@ WinMain(HINSTANCE Instance,
 		LPSTR CommandLine,
 		int ShowCode)
 {
+	Win32LoadXInput();
 	WNDCLASSA WindowClass = {};
 
 	Win32ResizeDIBSection(&GlobalBackuffer , 1280, 720);
 
-	WindowClass.style = CS_HREDRAW | CS_VREDRAW;
+	WindowClass.style = CS_HREDRAW | CS_VREDRAW | CS_OWNDC;
 	WindowClass.lpfnWndProc = Win32MainWindowCallback;
 	WindowClass.hInstance = Instance;
 	// WindowClass.hIcon = ;
@@ -230,8 +263,8 @@ WinMain(HINSTANCE Instance,
 			int XOffset = 0;
 			int YOffset = 0;
 
-			Running = true;
-			while (Running)
+			GlobalRunning = true;
+			while (GlobalRunning)
 			{
 				MSG Message;
 
@@ -239,20 +272,57 @@ WinMain(HINSTANCE Instance,
 				{
 					if (Message.message == WM_QUIT)
 					{
-						Running = false;
+						GlobalRunning = false;
 					}
 
 					TranslateMessage(&Message);
 					DispatchMessageA(&Message);
 				}
+
+				// TODO(David): Should we pull this more frequently
+				for(DWORD ControllerIndex = 0;
+				ControllerIndex < XUSER_MAX_COUNT;
+				++ControllerIndex)
+				{
+					XINPUT_STATE ControllerState;
+					if (XInputGetState_(ControllerIndex, &ControllerState) == ERROR_SUCCESS)
+					{
+						// NOTE(David): This controller is plugged in.
+						// TODO(David): See if ControllerState.dwPacketNumber increments
+						XINPUT_GAMEPAD *Pad = &ControllerState.Gamepad;
+
+						bool Up = (Pad->wButtons & XINPUT_GAMEPAD_DPAD_UP);
+						bool Down = (Pad->wButtons & XINPUT_GAMEPAD_DPAD_DOWN);
+						bool Left = (Pad->wButtons & XINPUT_GAMEPAD_DPAD_LEFT);
+						bool Right = (Pad->wButtons & XINPUT_GAMEPAD_DPAD_RIGHT);
+						bool Start = (Pad->wButtons & XINPUT_GAMEPAD_START);
+						bool Back = (Pad->wButtons & XINPUT_GAMEPAD_BACK);
+						bool LeftShoulder = (Pad->wButtons & XINPUT_GAMEPAD_LEFT_SHOULDER);
+						bool RightShoulder = (Pad->wButtons & XINPUT_GAMEPAD_RIGHT_SHOULDER);
+						bool AButton = (Pad->wButtons & XINPUT_GAMEPAD_A);
+						bool BButton = (Pad->wButtons & XINPUT_GAMEPAD_B);
+						bool XButton = (Pad->wButtons & XINPUT_GAMEPAD_X);
+						bool YButton = (Pad->wButtons & XINPUT_GAMEPAD_Y);
+
+						int16 StickX = Pad->sThumbLX;
+						int16 StickY = Pad->sThumbLY;
+					}
+					else
+					{
+						// NOTE(David): The controller is not available.
+					}
+					
+				}
 	
 				Win32RenderWeirdgradient(GlobalBackuffer, XOffset, YOffset);
 
 				HDC DeviceContext = GetDC(Window);
+
 				Win32_Window_Dimension Dimension = GetWindowDimension(Window);
 				Win32DisplayBufferToWindow(DeviceContext,
 										   Dimension.Width, Dimension.Height,
-										   GlobalBackuffer, 0, 0, Dimension.Width, Dimension.Height);
+										   GlobalBackuffer, 
+										   0, 0, Dimension.Width, Dimension.Height);
 				ReleaseDC(Window, DeviceContext);
 
 				++XOffset;
