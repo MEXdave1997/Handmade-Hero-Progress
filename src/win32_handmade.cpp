@@ -1,4 +1,4 @@
-//NOTE(David): Continue from here - https://youtu.be/w7ay7QXmo_o?t=4008
+//NOTE(David): Continue from here - https://youtu.be/J3y1x54vyIQ?t=2570 
 #include <Windows.h>
 #include <stdint.h>
 #include <Xinput.h>
@@ -45,7 +45,7 @@ X_INPUT_GET_STATE(XInputGetStateStub)
 	return 0;
 }
 global_variable x_input_get_state *XInputGetState_ = XInputGetStateStub;
-#define  XInputGetState XInputGetState_;
+#define  XInputGetState XInputGetState_
 
 // NOTE(David): XInputSetState
 #define X_INPUT_SET_STATE(name) DWORD WINAPI name(DWORD dwUserIndex, XINPUT_VIBRATION *pVibration)
@@ -55,7 +55,7 @@ X_INPUT_SET_STATE(XInputSetStateStub)
 	return 0;
 }
 global_variable x_input_set_state *XInputSetState_ = XInputSetStateStub;
-#define  XInputSetState XInputSetState_;
+#define  XInputSetState XInputSetState_
 
 internal void
 Win32LoadXInput(void)
