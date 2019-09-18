@@ -36,3 +36,4 @@ build/
 
 # Broken Rask File
 .vscode/tasks.json
+.vscode/settings.json
